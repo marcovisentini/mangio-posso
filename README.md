@@ -1,1 +1,2 @@
-# mangio-posso
+# MangioPosso
+App personale per gestire intolleranze alimentari
