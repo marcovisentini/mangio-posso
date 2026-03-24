@@ -18,8 +18,17 @@ export default async function handler(req, res) {
     }
 
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'MangioPosso/1.0 (personal food app)' }
+      headers: {
+        'User-Agent': 'MangioPosso/1.0',
+        'Accept': 'application/json'
+      },
+      signal: AbortSignal.timeout(8000)
     });
+
+    if (!response.ok) {
+      return res.status(502).json({ error: `OpenFoodFacts error: ${response.status}` });
+    }
+
     const data = await response.json();
     res.status(200).json(data);
   } catch (e) {
