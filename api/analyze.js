@@ -2,30 +2,24 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { productName, ingredients, mode } = req.body;
 
   const SYSTEM = `Sei un assistente nutrizionale italiano. L'utente ha queste sensibilità alimentari (test Foodplan):
-- Grano duro e grano tenero (frumento) e derivati: farina di frumento, semola, cruschello, amido di frumento. ATTENZIONE: orzo e segale NON sono nella sua lista.
+- Grano duro e grano tenero (frumento) e derivati: farina di frumento, semola, cruschello, amido di frumento. Orzo e segale NON sono nella lista.
 - Arachidi
-- Latticini: latte di mucca, latte di capra, mozzarella, gorgonzola, grana padano, parmigiano reggiano, pecorino, ricotta, burro, panna, caseina, siero di latte
-- Lievito di birra (il lievito chimico/lievito in polvere NON è problematico)
+- Latticini: latte, latte di mucca, latte di capra, mozzarella, gorgonzola, grana padano, parmigiano, pecorino, ricotta, burro, panna, crema di latte, caseina, siero di latte, formaggi freschi e stagionati in generale (es. stracchino, crescenza, brie, camembert, ecc.)
+- Lievito di birra (lievito chimico e lievito in polvere NON sono problematici)
 - Uova (uovo, albume, tuorlo, lecitina d'uovo)
 
-Analizza e rispondi ESCLUSIVAMENTE con JSON valido senza markdown né backtick:
-{"safe":true/false/null,"verdict":"testo breve max 5 parole","explanation":"2-3 frasi chiare in italiano","problematic":["ingrediente1"]}
+Rispondi SOLO con JSON valido su una riga senza markdown né backtick:
+{"safe":true/false/null,"verdict":"max 5 parole","explanation":"2-3 frasi esplicative in italiano che dicono SEMPRE perché il prodotto è ok o non ok","problematic":["lista ingredienti problematici trovati"]}`;
 
-safe=true se può mangiarlo, false se no, null se dati insufficienti.`;
-
-  let userMsg = '';
-  if (mode === 'name_only') {
-    userMsg = `Prodotto: "${productName}"\nNon ho la lista ingredienti. Basati sul nome per una valutazione di massima, specificando che è una stima.`;
-  } else {
-    userMsg = `Prodotto: "${productName}"\nIngredienti: ${ingredients}`;
-  }
+  const userMsg = mode === 'name_only'
+    ? `Prodotto: "${productName}"\nNon ho la lista ingredienti. Analizza dal nome.`
+    : `Prodotto: "${productName}"\nIngredienti: ${ingredients}`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -44,11 +38,12 @@ safe=true se può mangiarlo, false se no, null se dati insufficienti.`;
     });
 
     const data = await response.json();
-    const text = data.content?.find(b => b.type === 'text')?.text || '{}';
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-    res.status(200).json(parsed);
+    const text = data.content?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(200).json({ safe: null, verdict: 'Errore', explanation: 'Risposta AI non valida. Riprova.', problematic: [] });
+    const parsed = JSON.parse(match[0]);
+    return res.status(200).json(parsed);
   } catch (e) {
-    res.status(500).json({ error: 'Errore AI', detail: e.message });
+    return res.status(500).json({ safe: null, verdict: 'Errore', explanation: 'Errore: ' + e.message, problematic: [] });
   }
 }
